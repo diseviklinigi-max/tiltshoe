@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tilt Gadget</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0a0a;
+    height: 100vh;
+    overflow: hidden;
+    color: #fff;
+    font-size: 12px;
+  }
+  
+  .tutamac {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 80px;
+    background: linear-gradient(135deg, #2d4a2d 0%, #1e3a1e 100%);
+    border-radius: 0 12px 12px 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 2px 0 15px rgba(68, 255, 68, 0.3);
+    z-index: 100;
+    transition: all 0.2s;
+    border: 1px solid rgba(68, 255, 68, 0.4);
+    border-left: none;
+  }
+  .tutamac:hover { width: 38px; }
+  .tutamac .ok { color: #44ff44; font-size: 18px; font-weight: bold; }
+  
+  .gadget {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    background: linear-gradient(135deg, #131313 0%, #0a0a0a 100%);
+    box-shadow: 4px 0 30px rgba(0, 0, 0, 0.8);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s;
+    z-index: 50;
+    border-right: 1px solid rgba(68, 255, 68, 0.18);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    width: 380px;
+  }
+  
+  .gadget.acik { transform: translateX(0); }
+  
+  .gadget.mod-tiny { width: 260px; }
+  .gadget.mod-orta { width: 380px; }
+  .gadget.mod-full { width: 100vw; border-right: none; }
+  
+  .gadget-ust {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid rgba(68, 255, 68, 0.1);
+    flex-shrink: 0;
+  }
+  
+  .ust-sol { display: flex; align-items: center; gap: 10px; }
+  .baslik { font-size: 12px; font-weight: 700; color: #44ff44; letter-spacing: 0.5px; }
+  
+  .durum-rozet {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; font-weight: 600; color: #ffaa00;
+  }
+  .durum-rozet.bagli { color: #44ff44; }
+  .durum-rozet.hata { color: #ff4444; }
+  
+  .durum-nokta {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+    animation: nabiz 2s infinite;
+  }
+  @keyframes nabiz { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  
+  .ust-butonlar { display: flex; gap: 4px; }
+  
+  .icon-btn {
+    min-width: 26px; height: 24px;
+    border: 1px solid rgba(68, 255, 68, 0.3);
+    background: rgba(68, 255, 68, 0.05);
+    color: #44ff44;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+  }
+  .icon-btn:hover { background: rgba(68, 255, 68, 0.18); }
+  .icon-btn.aktif { background: rgba(68, 255, 68, 0.25); border-color: #44ff44; }
+  
+  .gadget-icerik {
+    padding: 10px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .gadget-icerik::-webkit-scrollbar { width: 4px; }
+  .gadget-icerik::-webkit-scrollbar-thumb { background: rgba(68, 255, 68, 0.2); border-radius: 2px; }
+  
+  /* FULL MOD: yan yana 2 kisi */
+  .gadget.mod-full .gadget-icerik {
+    padding: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-content: start;
+  }
+  
+  .kisi-blogu {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(68, 255, 68, 0.08);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    transition: opacity 0.4s, filter 0.4s, border-color 0.4s, box-shadow 0.4s;
+  }
+  .gadget.mod-full .kisi-blogu {
+    margin-bottom: 0;
+    padding: 18px;
+  }
+  .kisi-blogu.kisi-offline {
+    opacity: 0.35;
+    filter: grayscale(85%);
+    border-color: rgba(255, 68, 68, 0.2);
+  }
+  .kisi-blogu.kisi-online {
+    border-color: rgba(68, 255, 68, 0.3);
+    box-shadow: 0 0 12px rgba(68, 255, 68, 0.08);
+  }
+  
+  .kisi-baslik { display: flex; align-items: center; margin-bottom: 8px; }
+  .gadget.mod-full .kisi-baslik { margin-bottom: 16px; }
+  .kisi-sol { display: flex; align-items: center; gap: 9px; }
+  
+  .kisi-avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(68, 255, 68, 0.5);
+    background: #2a2a2a;
+    flex-shrink: 0;
+    transition: width 0.3s, height 0.3s;
+  }
+  .gadget.mod-full .kisi-avatar { width: 72px; height: 72px; border-width: 3px; }
+  .kisi-blogu.kisi-offline .kisi-avatar { border-color: rgba(255, 68, 68, 0.3); }
+  
+  .kisi-bilgi { display: flex; flex-direction: column; gap: 3px; }
+  .kisi-isim { font-size: 16px; font-weight: 700; color: #fff; line-height: 1; }
+  .gadget.mod-full .kisi-isim { font-size: 26px; }
+  .kisi-durum-yazi { font-size: 10px; font-weight: 600; line-height: 1; }
+  .gadget.mod-full .kisi-durum-yazi { font-size: 13px; }
+  .kisi-durum-yazi.online { color: #44ff44; }
+  .kisi-durum-yazi.offline { color: #ff4444; }
+  
+  .esp-kartlari { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .gadget.mod-full .esp-kartlari { gap: 14px; }
+  
+  .esp-kart {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 8px;
+    padding: 7px;
+    border: 1px solid rgba(68, 255, 68, 0.15);
+    transition: all 0.3s;
+  }
+  .gadget.mod-full .esp-kart { padding: 14px; border-radius: 12px; }
+  .esp-kart.online { border-color: rgba(68, 255, 68, 0.45); }
+  .esp-kart.offline { border-color: rgba(255, 68, 68, 0.3); }
+  
+  .kart-ust { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .gadget.mod-full .kart-ust { margin-bottom: 10px; }
+  .kart-etiket { font-size: 11px; font-weight: 700; color: #44ff44; letter-spacing: 1px; }
+  .gadget.mod-full .kart-etiket { font-size: 15px; letter-spacing: 2px; }
+  .esp-kart.offline .kart-etiket { color: #aa6666; }
+  
+  .kart-durum-isareti {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+  }
+  .gadget.mod-full .kart-durum-isareti { width: 22px; height: 22px; font-size: 14px; }
+  .kart-durum-isareti.online {
+    background: #44ff44; color: #000;
+    box-shadow: 0 0 6px rgba(68, 255, 68, 0.6);
+  }
+  .kart-durum-isareti.offline { background: #ff4444; color: #fff; }
+  
+  .ayakkabi-img {
+    width: 100%; height: 44px;
+    object-fit: contain;
+    margin: 2px 0 5px;
+    transition: height 0.3s;
+  }
+  .gadget.mod-full .ayakkabi-img { height: 130px; margin: 8px 0 12px; }
+  .esp-kart.offline .ayakkabi-img { filter: grayscale(100%) brightness(0.5); }
+  
+  .tilt-daireleri { display: flex; justify-content: center; gap: 6px; margin-bottom: 6px; }
+  .gadget.mod-full .tilt-daireleri { gap: 14px; margin-bottom: 12px; }
+  
+  .tilt-daire {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid;
+    transition: all 0.25s;
+  }
+  .gadget.mod-full .tilt-daire { width: 28px; height: 28px; border-width: 3px; }
+  .tilt-daire.online {
+    border-color: #44ff44;
+    background: transparent;
+    box-shadow: 0 0 4px rgba(68, 255, 68, 0.4);
+  }
+  .tilt-daire.aktif {
+    border-color: #44ff44;
+    background: #44ff44;
+    box-shadow: 0 0 12px rgba(68, 255, 68, 0.9);
+    animation: aktif-puls 0.8s infinite;
+  }
+  @keyframes aktif-puls {
+    0%,100% { box-shadow: 0 0 12px rgba(68, 255, 68, 0.9); transform: scale(1); }
+    50% { box-shadow: 0 0 18px rgba(68, 255, 68, 1); transform: scale(1.15); }
+  }
+  .tilt-daire.offline { border-color: #ff4444; background: transparent; }
+  
+  /* WiFi satiri - tiny/orta modlarinda */
+  .wifi-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 10px;
+    color: #888;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .gadget.mod-full .wifi-row { display: none; }
+  .wifi-row.iyi { color: #44ff44; }
+  .wifi-row.orta { color: #ffaa00; }
+  .wifi-row.zayif { color: #ff6666; }
+  .wifi-isim { font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  
+  .sinyal-bar { display: inline-flex; align-items: flex-end; gap: 1px; height: 9px; }
+  .sinyal-bar div { width: 2px; background: currentColor; border-radius: 1px; }
+  .sinyal-bar div:nth-child(1) { height: 30%; }
+  .sinyal-bar div:nth-child(2) { height: 55%; }
+  .sinyal-bar div:nth-child(3) { height: 80%; }
+  .sinyal-bar div:nth-child(4) { height: 100%; }
+  .sinyal-bar div.sonuk { background: #444; }
+  
+  /* WiFi GRAFIK - sadece FULL modda */
+  .wifi-grafik-kutu {
+    display: none;
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    border: 1px solid rgba(68, 255, 68, 0.1);
+  }
+  .gadget.mod-full .wifi-grafik-kutu { display: block; }
+  
+  .wifi-grafik-ust {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+  .wifi-grafik-sol { display: flex; align-items: center; gap: 6px; }
+  .wifi-grafik-isim {
+    font-weight: 600;
+    color: #ccc;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .wifi-rssi-deger { font-size: 11px; font-weight: 700; }
+  
+  .wifi-grafik-svg {
+    width: 100%;
+    height: 80px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 4px;
+    display: block;
+  }
+  
+  .wifi-grafik-alt {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 9px;
+    color: #555;
+  }
+  
+  /* Renk legendi - sadece full modda */
+  .renk-legendi {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    font-size: 9px;
+    color: #666;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .renk-item { display: flex; align-items: center; gap: 4px; }
+  .renk-kutu { width: 10px; height: 3px; border-radius: 2px; }
+  
+  /* Alt bar */
+  .gadget-alt {
+    padding: 6px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-top: 1px solid rgba(68, 255, 68, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    color: #888;
+    flex-shrink: 0;
+  }
+  .gadget.mod-full .gadget-alt { font-size: 11px; padding: 10px 18px; }
+  .alt-istatistik { display: flex; gap: 10px; }
+  .alt-istatistik b { color: #44ff44; }
+  .alt-istatistik .aktif b { color: #ff4444; }
+  
+  /* TINY MOD - ayakkabi gizli */
+  .gadget.mod-tiny .ayakkabi-img { height: 0; margin: 0; overflow: hidden; }
+  .gadget.mod-tiny .esp-kart { padding: 5px 6px; }
+  .gadget.mod-tiny .wifi-row { font-size: 9px; }
+</style>
+</head>
+<body>
+
+<div class="tutamac" id="tutamac" onclick="acGadget()">
+  <span class="ok">▶</span>
+</div>
+
+<div class="gadget mod-orta" id="gadget">
+  
+  <div class="gadget-ust">
+    <div class="ust-sol">
+      <span class="baslik">TİLT</span>
+      <div class="durum-rozet" id="durumRozet">
+        <span class="durum-nokta"></span>
+        <span id="durumYazi">Bağlanıyor</span>
+      </div>
+    </div>
+    <div class="ust-butonlar">
+      <button class="icon-btn" onclick="sesAcKapa()" id="sesBtn" title="Ses">🔇</button>
+      <button class="icon-btn" onclick="modDegistir('tiny')" title="Kompakt">▪</button>
+      <button class="icon-btn" onclick="modDegistir('orta')" title="Orta">▭</button>
+      <button class="icon-btn" onclick="modDegistir('full')" title="Tam">▣</button>
+      <button class="icon-btn" onclick="gizleGadget()" title="Gizle">◀</button>
+    </div>
+  </div>
+  
+  <div class="gadget-icerik">
+    
+    <!-- EFE -->
+    <div class="kisi-blogu kisi-offline" id="kisi-efe">
+      <div class="kisi-baslik">
+        <div class="kisi-sol">
+          <img src="efe.png" class="kisi-avatar" alt="Efe">
+          <div class="kisi-bilgi">
+            <div class="kisi-isim">Efe</div>
+            <div class="kisi-durum-yazi offline" id="durum-yazi-efe">● Bağlı Değil</div>
+          </div>
+        </div>
+      </div>
+      <div class="esp-kartlari">
+        
+        <div class="esp-kart offline" id="kart-esp1">
+          <div class="kart-ust">
+            <div class="kart-etiket">SAĞ</div>
+            <div class="kart-durum-isareti offline" id="isaret-esp1">✕</div>
+          </div>
+          <img src="gri.png" class="ayakkabi-img" alt="Efe Sağ">
+          <div class="tilt-daireleri">
+            <div class="tilt-daire offline" id="d-Efe-1"></div>
+            <div class="tilt-daire offline" id="d-Efe-2"></div>
+            <div class="tilt-daire offline" id="d-Efe-3"></div>
+          </div>
+          <div class="wifi-row" id="wifi-esp1">
+            <div class="sinyal-bar"><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div></div>
+            <span class="wifi-isim">—</span>
+          </div>
+          <div class="wifi-grafik-kutu">
+            <div class="wifi-grafik-ust">
+              <div class="wifi-grafik-sol">
+                <span class="wifi-grafik-isim" id="gr-isim-1">—</span>
+              </div>
+              <span class="wifi-rssi-deger" id="gr-rssi-1">—</span>
+            </div>
+            <svg class="wifi-grafik-svg" id="gr-svg-1" viewBox="0 0 200 80" preserveAspectRatio="none"></svg>
+            <div class="wifi-grafik-alt">
+              <span>0dBm</span>
+              <span id="gr-zaman-1">—</span>
+              <span>-100dBm</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="esp-kart offline" id="kart-esp2">
+          <div class="kart-ust">
+            <div class="kart-etiket">SOL</div>
+            <div class="kart-durum-isareti offline" id="isaret-esp2">✕</div>
+          </div>
+          <img src="gri.png" class="ayakkabi-img" alt="Efe Sol" style="transform:scaleX(-1)">
+          <div class="tilt-daireleri">
+            <div class="tilt-daire offline" id="d-Efe-4"></div>
+            <div class="tilt-daire offline" id="d-Efe-5"></div>
+            <div class="tilt-daire offline" id="d-Efe-6"></div>
+          </div>
+          <div class="wifi-row" id="wifi-esp2">
+            <div class="sinyal-bar"><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div></div>
+            <span class="wifi-isim">—</span>
+          </div>
+          <div class="wifi-grafik-kutu">
+            <div class="wifi-grafik-ust">
+              <div class="wifi-grafik-sol">
+                <span class="wifi-grafik-isim" id="gr-isim-2">—</span>
+              </div>
+              <span class="wifi-rssi-deger" id="gr-rssi-2">—</span>
+            </div>
+            <svg class="wifi-grafik-svg" id="gr-svg-2" viewBox="0 0 200 80" preserveAspectRatio="none"></svg>
+            <div class="wifi-grafik-alt">
+              <span>0dBm</span>
+              <span id="gr-zaman-2">—</span>
+              <span>-100dBm</span>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- KAYRA -->
+    <div class="kisi-blogu kisi-offline" id="kisi-kayra">
+      <div class="kisi-baslik">
+        <div class="kisi-sol">
+          <img src="kayra.png" class="kisi-avatar" alt="Kayra">
+          <div class="kisi-bilgi">
+            <div class="kisi-isim">Kayra</div>
+            <div class="kisi-durum-yazi offline" id="durum-yazi-kayra">● Bağlı Değil</div>
+          </div>
+        </div>
+      </div>
+      <div class="esp-kartlari">
+        
+        <div class="esp-kart offline" id="kart-esp3">
+          <div class="kart-ust">
+            <div class="kart-etiket">SAĞ</div>
+            <div class="kart-durum-isareti offline" id="isaret-esp3">✕</div>
+          </div>
+          <img src="siyah.png" class="ayakkabi-img" alt="Kayra Sağ">
+          <div class="tilt-daireleri">
+            <div class="tilt-daire offline" id="d-Kayra-1"></div>
+            <div class="tilt-daire offline" id="d-Kayra-2"></div>
+            <div class="tilt-daire offline" id="d-Kayra-3"></div>
+          </div>
+          <div class="wifi-row" id="wifi-esp3">
+            <div class="sinyal-bar"><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div></div>
+            <span class="wifi-isim">—</span>
+          </div>
+          <div class="wifi-grafik-kutu">
+            <div class="wifi-grafik-ust">
+              <div class="wifi-grafik-sol">
+                <span class="wifi-grafik-isim" id="gr-isim-3">—</span>
+              </div>
+              <span class="wifi-rssi-deger" id="gr-rssi-3">—</span>
+            </div>
+            <svg class="wifi-grafik-svg" id="gr-svg-3" viewBox="0 0 200 80" preserveAspectRatio="none"></svg>
+            <div class="wifi-grafik-alt">
+              <span>0dBm</span>
+              <span id="gr-zaman-3">—</span>
+              <span>-100dBm</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="esp-kart offline" id="kart-esp4">
+          <div class="kart-ust">
+            <div class="kart-etiket">SOL</div>
+            <div class="kart-durum-isareti offline" id="isaret-esp4">✕</div>
+          </div>
+          <img src="siyah.png" class="ayakkabi-img" alt="Kayra Sol" style="transform:scaleX(-1)">
+          <div class="tilt-daireleri">
+            <div class="tilt-daire offline" id="d-Kayra-4"></div>
+            <div class="tilt-daire offline" id="d-Kayra-5"></div>
+            <div class="tilt-daire offline" id="d-Kayra-6"></div>
+          </div>
+          <div class="wifi-row" id="wifi-esp4">
+            <div class="sinyal-bar"><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div></div>
+            <span class="wifi-isim">—</span>
+          </div>
+          <div class="wifi-grafik-kutu">
+            <div class="wifi-grafik-ust">
+              <div class="wifi-grafik-sol">
+                <span class="wifi-grafik-isim" id="gr-isim-4">—</span>
+              </div>
+              <span class="wifi-rssi-deger" id="gr-rssi-4">—</span>
+            </div>
+            <svg class="wifi-grafik-svg" id="gr-svg-4" viewBox="0 0 200 80" preserveAspectRatio="none"></svg>
+            <div class="wifi-grafik-alt">
+              <span>0dBm</span>
+              <span id="gr-zaman-4">—</span>
+              <span>-100dBm</span>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+  </div>
+  
+  <div class="gadget-alt">
+    <div class="alt-istatistik">
+      <span>Online <b id="onlineSayi">0/12</b></span>
+      <span class="aktif">Aktif <b id="aktifSayi">0</b></span>
+    </div>
+    <div id="sonZaman">—</div>
+  </div>
+  
+</div>
+
+<script>
+const MQTT_HOST = "a071189256ab4689ba5a49d303d873a0.s1.eu.hivemq.cloud";
+const MQTT_PORT = 8884;
+const MQTT_USER = "tilt_user";
+const MQTT_PASS = "zx83bZX83B%";
+const MQTT_TOPIC = "klinik/tiltler/#";
+
+const KISI_ESPLERI = { efe: [1, 2], kayra: [3, 4] };
+
+const TILT_SES_NUMARA = {
+  "Efe-1": "01",   "Efe-2": "02",   "Efe-3": "03",
+  "Efe-4": "04",   "Efe-5": "05",   "Efe-6": "06",
+  "Kayra-1": "07", "Kayra-2": "08", "Kayra-3": "09",
+  "Kayra-4": "10", "Kayra-5": "11", "Kayra-6": "12"
+};
+
+const tiltDurumlari = {};
+const tiltSonZaman = {};
+const espSonHaber = {};
+const espWifi = {};
+const espRssi = {};
+// Her ESP icin: [{t: zaman, rssi: deger, wifi: isim}]
+const espGecmis = {1: [], 2: [], 3: [], 4: []};
+
+["Efe-1","Efe-2","Efe-3","Efe-4","Efe-5","Efe-6",
+ "Kayra-1","Kayra-2","Kayra-3","Kayra-4","Kayra-5","Kayra-6"]
+.forEach(t => { tiltDurumlari[t] = null; tiltSonZaman[t] = null; });
+
+[1,2,3,4].forEach(id => { espSonHaber[id] = null; espWifi[id] = "—"; espRssi[id] = 0; });
+
+// Ses dosyalari onceden yukle
+const sesCache = {};
+for (const [tilt, num] of Object.entries(TILT_SES_NUMARA)) {
+  const audio = new Audio(`sesler/${num}.mp3`);
+  audio.preload = "auto";
+  sesCache[tilt] = audio;
+}
+
+function sesCal(tiltIsim) {
+  if (!sesAcik) return;
+  const audio = sesCache[tiltIsim];
+  if (!audio) return;
+  try {
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  } catch(e) {}
+}
+
+const gadget = document.getElementById("gadget");
+const tutamac = document.getElementById("tutamac");
+
+function acGadget() {
+  gadget.classList.add("acik");
+  tutamac.style.display = "none";
+}
+
+function gizleGadget() {
+  gadget.classList.remove("acik");
+  tutamac.style.display = "flex";
+}
+
+function modDegistir(yeniMod) {
+  gadget.classList.remove("mod-tiny", "mod-orta", "mod-full");
+  gadget.classList.add("mod-" + yeniMod);
+  try { localStorage.setItem("tilt_mod", yeniMod); } catch(e) {}
+}
+
+try {
+  const kayitliMod = localStorage.getItem("tilt_mod");
+  if (kayitliMod && ["tiny","orta","full"].includes(kayitliMod)) {
+    modDegistir(kayitliMod);
+  }
+} catch(e) {}
+
+let sesAcik = false;
+
+function sesAcKapa() {
+  sesAcik = !sesAcik;
+  const btn = document.getElementById("sesBtn");
+  btn.textContent = sesAcik ? "🔊" : "🔇";
+  btn.classList.toggle("aktif", sesAcik);
+  
+  if (sesAcik) {
+    try {
+      const audio = sesCache["Efe-1"];
+      if (audio) {
+        audio.volume = 0.01;
+        audio.play().then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = 1.0;
+        }).catch(()=>{});
+      }
+    } catch(e) {}
+  }
+}
+
+const durumRozet = document.getElementById("durumRozet");
+const durumYazi = document.getElementById("durumYazi");
+
+const istemci = mqtt.connect(`wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`, {
+  username: MQTT_USER,
+  password: MQTT_PASS,
+  clientId: "Web_" + Math.random().toString(16).substr(2, 8),
+  clean: true,
+  reconnectPeriod: 3000,
+  keepalive: 30
+});
+
+istemci.on("connect", () => {
+  durumRozet.className = "durum-rozet bagli";
+  durumYazi.textContent = "Bağlı";
+  istemci.subscribe(MQTT_TOPIC);
+});
+
+istemci.on("error", () => {
+  durumRozet.className = "durum-rozet hata";
+  durumYazi.textContent = "Hata";
+});
+
+istemci.on("close", () => {
+  durumRozet.className = "durum-rozet";
+  durumYazi.textContent = "Bağlanıyor";
+});
+
+istemci.on("message", (topic, mesaj) => {
+  try {
+    const veri = JSON.parse(mesaj.toString());
+    const espId = veri.esp;
+    const simdi = Date.now();
+    
+    espSonHaber[espId] = simdi;
+    const yeniWifi = veri.wifi || "?";
+    espWifi[espId] = yeniWifi;
+    espRssi[espId] = veri.rssi || 0;
+    
+    // Gecmise ekle (her 1 saniyede max bir nokta)
+    const gecmis = espGecmis[espId];
+    if (gecmis.length === 0 || (simdi - gecmis[gecmis.length-1].t) > 1000) {
+      gecmis.push({ t: simdi, rssi: espRssi[espId], wifi: yeniWifi });
+    }
+    
+    if (veri.tilts) {
+      veri.tilts.forEach(t => {
+        if (t.isim in tiltDurumlari) {
+          const onceki = tiltDurumlari[t.isim];
+          tiltDurumlari[t.isim] = t.durum;
+          tiltSonZaman[t.isim] = simdi;
+          
+          // 0 = Aktif, 1 = Normal (TERS)
+          if (onceki !== null && onceki != 0 && t.durum == 0) {
+            sesCal(t.isim);
+          }
+        }
+      });
+    }
+  } catch (e) {}
+});
+
+function sinyalSeviyesi(rssi) {
+  if (rssi >= -55) return 4;
+  if (rssi >= -65) return 3;
+  if (rssi >= -75) return 2;
+  if (rssi >= -85) return 1;
+  return 0;
+}
+
+function sinyalKalite(rssi) {
+  if (rssi >= -60) return "iyi";
+  if (rssi >= -75) return "orta";
+  return "zayif";
+}
+
+// RSSI -> renk
+function rssiRenk(rssi) {
+  if (rssi >= -55) return "#44ff44";    // Yesil - cok iyi
+  if (rssi >= -65) return "#44ccff";    // Mavi - iyi
+  if (rssi >= -78) return "#ffaa00";    // Turuncu - orta
+  return "#ff4444";                      // Kirmizi - kotu
+}
+
+function zamanFormat(ms) {
+  const dk = Math.floor(ms / 60000);
+  const sn = Math.floor((ms % 60000) / 1000);
+  if (dk < 1) return `${sn}sn`;
+  if (dk < 60) return `${dk}dk ${sn}sn`;
+  const sa = Math.floor(dk / 60);
+  return `${sa}s ${dk%60}dk`;
+}
+
+function grafikCiz(espId) {
+  const svg = document.getElementById("gr-svg-" + espId);
+  if (!svg) return;
+  
+  const gecmis = espGecmis[espId];
+  if (gecmis.length < 1) {
+    svg.innerHTML = '<text x="100" y="42" text-anchor="middle" fill="#444" font-size="9">Veri bekleniyor...</text>';
+    return;
+  }
+  
+  // SVG 200x80
+  // Y: RSSI 0 -> 2, RSSI -100 -> 78
+  const simdi = Date.now();
+  const enEski = gecmis[0].t;
+  const aralik = Math.max(simdi - enEski, 30000); // min 30 sn
+  
+  const noktalar = gecmis.map(p => {
+    const x = ((p.t - enEski) / aralik) * 200;
+    const y = 2 + Math.min(78, Math.max(0, (-p.rssi / 100) * 76));
+    return { x, y, rssi: p.rssi, wifi: p.wifi, t: p.t };
+  });
+  
+  let icerik = '';
+  
+  // Yatay rehber cizgileri (RSSI seviyeleri)
+  icerik += `<line x1="0" y1="11" x2="200" y2="11" stroke="rgba(68,255,68,0.06)" stroke-dasharray="2,3"/>`;     // -15 dbm
+  icerik += `<line x1="0" y1="34" x2="200" y2="34" stroke="rgba(68,204,255,0.06)" stroke-dasharray="2,3"/>`;     // -45
+  icerik += `<line x1="0" y1="49" x2="200" y2="49" stroke="rgba(255,170,0,0.06)" stroke-dasharray="2,3"/>`;      // -65
+  icerik += `<line x1="0" y1="60" x2="200" y2="60" stroke="rgba(255,68,68,0.06)" stroke-dasharray="2,3"/>`;      // -78
+  
+  // WiFi degisim cizgileri ve etiketleri
+  const degisimler = [];
+  for (let i = 1; i < noktalar.length; i++) {
+    if (noktalar[i].wifi !== noktalar[i-1].wifi && noktalar[i-1].wifi !== "?" && noktalar[i-1].wifi !== "—") {
+      degisimler.push({ index: i, x: noktalar[i].x, eski: noktalar[i-1].wifi, yeni: noktalar[i].wifi });
+    }
+  }
+  
+  // Once degisim cizgilerini ciz (alt katmanda)
+  for (const d of degisimler) {
+    icerik += `<line x1="${d.x}" y1="0" x2="${d.x}" y2="80" stroke="#ffaa00" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>`;
+  }
+  
+  // Cizgi parcalari (her segment kendi rengi ile)
+  if (noktalar.length > 1) {
+    for (let i = 1; i < noktalar.length; i++) {
+      const p1 = noktalar[i-1];
+      const p2 = noktalar[i];
+      const renk = rssiRenk(p2.rssi);
+      icerik += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${renk}" stroke-width="1.8" stroke-linecap="round"/>`;
+    }
+  }
+  
+  // Son nokta - parlak nokta
+  const son = noktalar[noktalar.length - 1];
+  const sonRenk = rssiRenk(son.rssi);
+  icerik += `<circle cx="${son.x}" cy="${son.y}" r="2.5" fill="${sonRenk}"><animate attributeName="r" values="2.5;4;2.5" dur="1.5s" repeatCount="indefinite"/></circle>`;
+  
+  // WiFi degisim etiketleri (ust katmanda)
+  for (const d of degisimler) {
+    const yPos = 11;
+    // Etiketin sigmasi icin yer ayarla
+    let textX = d.x + 3;
+    let textAnchor = "start";
+    if (d.x > 130) {
+      textX = d.x - 3;
+      textAnchor = "end";
+    }
+    // Yeni WiFi adi
+    const wifiKisa = d.yeni.length > 12 ? d.yeni.substr(0, 11) + "…" : d.yeni;
+    icerik += `<text x="${textX}" y="${yPos}" fill="#ffaa00" font-size="8" font-weight="bold" text-anchor="${textAnchor}">→${wifiKisa}</text>`;
+  }
+  
+  svg.innerHTML = icerik;
+  
+  // Sure goster
+  const surEl = document.getElementById("gr-zaman-" + espId);
+  if (surEl) {
+    surEl.textContent = zamanFormat(simdi - enEski);
+  }
+}
+
+function uiGuncelle() {
+  const simdi = Date.now();
+  let onlineCount = 0;
+  let aktifCount = 0;
+  
+  // Tiltler - 0 = Aktif, 1 = Normal (TERS)
+  for (const isim of Object.keys(tiltDurumlari)) {
+    const sonZaman = tiltSonZaman[isim];
+    const durum = tiltDurumlari[isim];
+    const offline = !sonZaman || (simdi - sonZaman) > 3000;
+    const daire = document.getElementById("d-" + isim);
+    if (!daire) continue;
+    
+    if (offline) {
+      daire.className = "tilt-daire offline";
+    } else {
+      onlineCount++;
+      if (durum == 0) {
+        aktifCount++;
+        daire.className = "tilt-daire aktif";
+      } else {
+        daire.className = "tilt-daire online";
+      }
+    }
+  }
+  
+  for (const espId of [1, 2, 3, 4]) {
+    const sonHaber = espSonHaber[espId];
+    const online = sonHaber && (simdi - sonHaber) <= 3000;
+    
+    const kart = document.getElementById("kart-esp" + espId);
+    const isaret = document.getElementById("isaret-esp" + espId);
+    const wifiEl = document.getElementById("wifi-esp" + espId);
+    
+    if (online) {
+      kart.className = "esp-kart online";
+      isaret.className = "kart-durum-isareti online";
+      isaret.textContent = "✓";
+      
+      const rssi = espRssi[espId];
+      const wifi = espWifi[espId];
+      const kalite = sinyalKalite(rssi);
+      const seviye = sinyalSeviyesi(rssi);
+      
+      const barlarHTML = [];
+      for (let i = 0; i < 4; i++) {
+        barlarHTML.push(`<div class="${i < seviye ? '' : 'sonuk'}"></div>`);
+      }
+      
+      // Kompakt wifi gosterimi
+      wifiEl.className = "wifi-row " + kalite;
+      wifiEl.innerHTML = `
+        <div class="sinyal-bar">${barlarHTML.join('')}</div>
+        <span class="wifi-isim" title="${wifi} (${rssi} dBm)">${wifi}</span>
+      `;
+      
+      // Grafik bilgileri
+      const grIsim = document.getElementById("gr-isim-" + espId);
+      const grRssi = document.getElementById("gr-rssi-" + espId);
+      if (grIsim) grIsim.textContent = wifi;
+      if (grRssi) {
+        grRssi.textContent = `${rssi} dBm`;
+        grRssi.style.color = rssiRenk(rssi);
+      }
+    } else {
+      kart.className = "esp-kart offline";
+      isaret.className = "kart-durum-isareti offline";
+      isaret.textContent = "✕";
+      wifiEl.className = "wifi-row";
+      wifiEl.innerHTML = `
+        <div class="sinyal-bar"><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div><div class="sonuk"></div></div>
+        <span class="wifi-isim">Bağlantı yok</span>
+      `;
+      
+      const grIsim = document.getElementById("gr-isim-" + espId);
+      const grRssi = document.getElementById("gr-rssi-" + espId);
+      if (grIsim) grIsim.textContent = "Bağlantı yok";
+      if (grRssi) {
+        grRssi.textContent = "—";
+        grRssi.style.color = "#666";
+      }
+    }
+    
+    // Grafigi her zaman ciz
+    grafikCiz(espId);
+  }
+  
+  for (const [kisi, espler] of Object.entries(KISI_ESPLERI)) {
+    const enAzBiriOnline = espler.some(id => 
+      espSonHaber[id] && (simdi - espSonHaber[id]) <= 3000
+    );
+    const kisiBlok = document.getElementById("kisi-" + kisi);
+    const durumYaziEl = document.getElementById("durum-yazi-" + kisi);
+    
+    if (enAzBiriOnline) {
+      kisiBlok.className = "kisi-blogu kisi-online";
+      durumYaziEl.className = "kisi-durum-yazi online";
+      durumYaziEl.textContent = "● Bağlı";
+    } else {
+      kisiBlok.className = "kisi-blogu kisi-offline";
+      durumYaziEl.className = "kisi-durum-yazi offline";
+      durumYaziEl.textContent = "● Bağlı Değil";
+    }
+  }
+  
+  document.getElementById("onlineSayi").textContent = `${onlineCount}/12`;
+  document.getElementById("aktifSayi").textContent = aktifCount;
+  document.getElementById("sonZaman").textContent = new Date().toTimeString().substr(0, 8);
+}
+
+setInterval(uiGuncelle, 500);
+uiGuncelle();
+</script>
+
+</body>
+</html>
